@@ -1,124 +1,101 @@
 package com.happy.itemlocationfinder
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.Address
 import android.location.Geocoder
+import android.location.Location
 import android.location.LocationManager
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
+import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import com.google.android.gms.location.*
 import java.util.*
 
 private lateinit var fusedLocationClient: FusedLocationProviderClient
 private lateinit var locationRequest: LocationRequest
 private lateinit var locationCallback: LocationCallback
+var textView : TextView? = null
+var locationFetched = ""
 
 class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+        initView()
         fetchLocation()
     }
 
+    fun initView(){
+        textView = findViewById(R.id.fetch_location_txt)
+
+    }
+
     fun fetchLocation(){
-        val manager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        if (!manager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-            showAlertLocation()
-        }
-        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
-        getLocationUpdates()
-    }
-
-    fun showAlertLocation(){
-        val dialog = AlertDialog.Builder(this)
-        dialog.setMessage("Your location settings is set to Off, Please enable location to use this application")
-        dialog.setPositiveButton("Settings") { _, _ ->
-            val myIntent = Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
-            startActivity(myIntent)
-        }
-        dialog.setNegativeButton("Cancel") { _, _ ->
-            finish()
-        }
-        dialog.setCancelable(false)
-        dialog.show()
-    }
-
-    private fun getLocationUpdates() {
-        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
-        locationRequest = LocationRequest()
-        locationRequest.interval = 50000
-        locationRequest.fastestInterval = 50000
-        locationRequest.smallestDisplacement = 170f //170 m = 0.1 mile
-        locationRequest.priority = LocationRequest.PRIORITY_HIGH_ACCURACY //according to your app
-        locationCallback = object : LocationCallback() {
-            override fun onLocationResult(locationResult: LocationResult?) {
-                locationResult ?: return
-                if (locationResult.locations.isNotEmpty()) {
-                    /*val location = locationResult.lastLocation
-                    Log.e("location", location.toString())*/
-                    val addresses: List<Address>?
-                    val geoCoder = Geocoder(applicationContext, Locale.getDefault())
-                    addresses = geoCoder.getFromLocation(
-                            locationResult.lastLocation.latitude,
-                            locationResult.lastLocation.longitude,
-                            1
-                    )
-                    if (addresses != null && addresses.isNotEmpty()) {
-                        val address: String = addresses[0].getAddressLine(0)
-                        val city: String = addresses[0].locality
-                        val state: String = addresses[0].adminArea
-                        val country: String = addresses[0].countryName
-                        val postalCode: String = addresses[0].postalCode
-                        val knownName: String = addresses[0].featureName
-                        Log.e("MyLocation", "$address $city $state $postalCode $country $knownName")
-                    }
-                }
+        if (ContextCompat.checkSelfPermission(this@MainActivity,
+                        Manifest.permission.ACCESS_FINE_LOCATION) !==
+                PackageManager.PERMISSION_GRANTED) {
+            if (ActivityCompat.shouldShowRequestPermissionRationale(this@MainActivity,
+                            Manifest.permission.ACCESS_FINE_LOCATION)) {
+                ActivityCompat.requestPermissions(this@MainActivity,
+                        arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), 1)
+            } else {
+                ActivityCompat.requestPermissions(this@MainActivity,
+                        arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), 1)
             }
         }
     }
 
-    // Start location updates
-    private fun startLocationUpdates() {
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            // TODO: Consider calling
-            //    ActivityCompat#requestPermissions
-            fusedLocationClient.requestLocationUpdates(
-                    locationRequest,
-                    locationCallback,
-                    null /* Looper */
-            )
-            // here to request the missing permissions, and then overriding
-            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
-            //                                          int[] grantResults)
-            // to handle the case where the user grants the permission. See the documentation
-            // for ActivityCompat#requestPermissions for more details.
-            return
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>,
+                                            grantResults: IntArray) {
+        when (requestCode) {
+            1 -> {
+                if (grantResults.isNotEmpty() && grantResults[0] ==
+                        PackageManager.PERMISSION_GRANTED) {
+                    if ((ContextCompat.checkSelfPermission(this@MainActivity,
+                                    Manifest.permission.ACCESS_FINE_LOCATION) ===
+                                    PackageManager.PERMISSION_GRANTED)) {
+                        Toast.makeText(this, "Permission Granted", Toast.LENGTH_SHORT).show()
+                        textView!!.setOnClickListener {
+                            getLastKnownLocation(applicationContext)
+                        }
+                    }
+                } else {
+                    Toast.makeText(this, "Permission Denied", Toast.LENGTH_SHORT).show()
+                }
+                return
+            }
+        }
+    }
+
+
+    @SuppressLint("MissingPermission")
+    fun getLastKnownLocation(context: Context) {
+        val locationManager: LocationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        val providers: List<String> = locationManager.getProviders(true)
+        var location: Location? = null
+        for (i in providers.size - 1 downTo 0) {
+            location= locationManager.getLastKnownLocation(providers[i])
+            if (location != null)
+                break
+        }
+        val gps = DoubleArray(2)
+        if (location != null) {
+            gps[0] = location.getLatitude()
+            gps[1] = location.getLongitude()
+            Log.e("gpsLat",gps[0].toString())
+            Log.e("gpsLong",gps[1].toString())
         }
 
-    }
-
-    // Stop location updates
-    private fun stopLocationUpdates() {
-        fusedLocationClient.removeLocationUpdates(locationCallback)
-    }
-
-    // Stop receiving location update when activity not visible/foreground
-    override fun onPause() {
-        super.onPause()
-        stopLocationUpdates()
-    }
-
-    // Start receiving location update when activity  visible/foreground
-    override fun onResume() {
-        super.onResume()
-        startLocationUpdates()
     }
 }
